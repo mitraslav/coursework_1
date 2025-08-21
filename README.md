@@ -4,7 +4,7 @@
 
 1. Клонируйте репозиторий:
 ```
-git clone https://github.com/mitraslav/bank_operations_widgets
+git clone https://github.com/mitraslav/coursework_1
 ```
 2. Установите зависимости:
 ```
