@@ -75,3 +75,46 @@ def process_cards_data(df: pd.DataFrame) -> list[dict]|None:
     except Exception as e:
         logger.error(f'Критическая ошибка в process_cards_data: {e}')
         raise
+
+
+def get_top_transactions(df: pd.DataFrame, top_n: int = 5) -> list[dict]|None:
+    """Получение топ-N транзакций по сумме платежа"""
+    if df is None:
+        logger.error("Передан None вместо DataFrame")
+        raise ValueError("DataFrame не может быть None")
+
+    if df.empty:
+        logger.warning("Передан пустой DataFrame")
+        return []
+
+    required_columns = ['Дата операции', 'Сумма платежа', 'Категория', 'Описание']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+
+    if missing_columns:
+        error_msg = f"Отсутствуют обязательные колонки: {', '.join(missing_columns)}"
+        logger.error(error_msg)
+        raise KeyError(error_msg)
+
+    if top_n <= 0:
+        logger.warning(f"Некорректное значение top_n: {top_n}. Установлено значение по умолчанию: 5")
+        top_n = 5
+    try:
+        df_copy = df.copy()
+        df_copy['date_formatted'] = pd.to_datetime(df_copy['Дата операции']).dt.strftime('%d.%m.%Y')
+
+
+        top_transactions = df_copy.nlargest(top_n, 'Сумма платежа', keep='all')
+
+        result = []
+        for _, row in top_transactions.iterrows():
+            result.append({
+                "date": row['date_formatted'],
+                "amount": round(row['Сумма платежа'], 2),
+                "category": row['Категория'] if pd.notna(row['Категория']) else "Не указана",
+                "description": row['Описание'] if pd.notna(row['Описание']) else "Не указана"
+            })
+        logger.info(f"Успешно обработано {len(result)} транзакций из {top_n} запрошенных")
+        return result
+    except Exception as e:
+        logger.error(f"Критическая ошибка в get_top_transactions: {e}")
+        raise

@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from src.views import greeting, load_operations_data, process_cards_data
+from src.views import greeting, load_operations_data, process_cards_data, get_top_transactions
 import pytest
 
 @patch('src.views.datetime')
@@ -104,4 +104,54 @@ def test_process_cards_data():
     assert result[1]['total_spent'] == 150.75
     assert result[1]['cashback'] == 1.51
 
+def test_get_top_transactions_none_empty():
+    with pytest.raises(ValueError,  match="DataFrame не может быть None"):
+        get_top_transactions(None)
 
+    df_empty = pd.DataFrame()
+    assert get_top_transactions(df_empty) == []
+
+
+@pytest.mark.parametrize("columns_to_include, expected_error", [
+    (['Сумма платежа', 'Категория', 'Описание'], "Дата операции"),
+    (['Дата операции', 'Категория', 'Описание'], "Сумма платежа"),
+    (['Дата операции', 'Сумма платежа', 'Описание'], "Категория"),
+    (['Дата операции', 'Сумма платежа', 'Категория'], "Описание"),
+    (['Дата операции', 'Сумма платежа'], "Категория, Описание"),
+    (['Дата операции'], "Сумма платежа, Категория, Описание"),
+
+])
+def test_get_top_transactions_missing_columns(columns_to_include, expected_error):
+
+
+    data = {col: ['test_value'] for col in columns_to_include}
+    df = pd.DataFrame(data)
+
+    with pytest.raises(KeyError, match=f"Отсутствуют обязательные колонки: {expected_error}"):
+        get_top_transactions(df)
+
+def test_get_top_transactions_invalid_top_n(valid_transactions_df):
+    result = get_top_transactions(valid_transactions_df, top_n=-1)
+    assert len(result) == 3
+
+    result = get_top_transactions(valid_transactions_df, top_n=0)
+    assert len(result) == 3
+
+    result = get_top_transactions(valid_transactions_df, top_n=100)
+    assert len(result) == 3
+
+def test_get_top_transactions(valid_transactions_df):
+    result = get_top_transactions(valid_transactions_df, top_n=2)
+    assert len(result) == 2
+    assert result == [{
+                "date": '30.12.2021',
+                "amount": 200.00,
+                "category": 'Транспорт',
+                "description": "Такси"},
+
+                {"date": "31.12.2021",
+                "amount": 100.00,
+                "category": "Еда",
+                "description": "Не указана"
+
+            }]
