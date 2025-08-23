@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from src.views import greeting, load_operations_data
+from src.views import greeting, load_operations_data, process_cards_data
 import pytest
 
 @patch('src.views.datetime')
@@ -52,3 +52,56 @@ def test_load_operations_data(mock_abspath, mock_read_excel):
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 2
     mock_read_excel.assert_called_once_with('\\fake\\path\\file.xlsx', sheet_name='Отчет по операциям')
+
+def test_process_cards_data_empty():
+    df = pd.DataFrame({})
+    with pytest.raises(ValueError):
+        process_cards_data(df)
+
+def test_process_cards_data_missing_key():
+    df_no_sum = pd.DataFrame({'Номер карты': ['1234']})
+    with pytest.raises(KeyError, match="Отсутствуют колонки: Сумма операции"):
+        process_cards_data(df_no_sum)
+
+    df_no_card = pd.DataFrame({"Сумма операции": [100.00]})
+    with pytest.raises(KeyError, match="Отсутствуют колонки: Номер карты"):
+        process_cards_data(df_no_card)
+
+    df_no_sum_card = pd.DataFrame({"other_column": [100.00]})
+    with pytest.raises(KeyError, match="Отсутствуют колонки: Номер карты, Сумма операции"):
+        process_cards_data(df_no_sum_card)
+
+def test_process_cards_data_exception():
+    df = pd.DataFrame({
+        'Номер карты': ['1234567812345678'],
+        'Сумма операции': [-100]
+    })
+    with patch('src.views.logger') as mock_logger:
+        with patch('pandas.DataFrame.groupby') as mock_groupby:
+            mock_groupby.side_effect = Exception("Критическая ошибка в process_cards_data")
+
+            with pytest.raises(Exception, match="Критическая ошибка в process_cards_data"):
+                process_cards_data(df)
+
+            mock_logger.error.assert_called_once_with('Критическая ошибка в process_cards_data: Критическая ошибка в process_cards_data')
+
+def test_process_cards_data():
+    df = pd.DataFrame({
+        'Номер карты': ['1234567812345678', '8765432187654321', '1234567812345678'],
+        'Сумма операции': [-100.50, -200.75, -50.25]
+    })
+
+    result = process_cards_data(df)
+
+    assert result is not None
+    assert len(result) == 2
+
+    assert result[0]['last_digits'] == '4321'
+    assert result[0]['total_spent'] == 200.75
+    assert result[0]['cashback'] == 2.01
+
+    assert result[1]['last_digits'] == '5678'
+    assert result[1]['total_spent'] == 150.75
+    assert result[1]['cashback'] == 1.51
+
+
