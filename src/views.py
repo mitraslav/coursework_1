@@ -1,19 +1,11 @@
 import json
-from typing import Dict, Any
+from typing import Any, Dict
 
-from src.utils import (
-    load_operations_data,
-    greeting,
-    process_cards_data,
-    get_top_transactions,
-    get_currency_rates,
-    get_stock_prices,
-    logger,
-    filter_data_by_month_range
-)
+from src.utils import (filter_data_by_month_range, get_currency_rates, get_stock_prices, get_top_transactions,
+                       greeting, load_operations_data, logger, process_cards_data)
 
 
-def main_function(input_time: str, file_path: str = '..\\files\\operations.xlsx') -> str:
+def main_function(input_time: str, file_path: str = "..\\files\\operations.xlsx") -> str:
     """
     Главная функция, возвращающая JSON-ответ
     """
@@ -26,7 +18,7 @@ def main_function(input_time: str, file_path: str = '..\\files\\operations.xlsx'
         logger.info(f"Загружено {len(df)} записей")
         logger.info(f"Колонки: {df.columns.tolist()}")
 
-        if 'Дата операции' in df.columns:
+        if "Дата операции" in df.columns:
             logger.info(f"Примеры дат: {df['Дата операции'].head(3).tolist()}")
 
         # Фильтрация данных
@@ -38,12 +30,12 @@ def main_function(input_time: str, file_path: str = '..\\files\\operations.xlsx'
             logger.warning("Нет данных после фильтрации. Проверяем возможные причины...")
 
             # Диагностика
-            if 'Дата операции' in df.columns:
-                unique_dates = df['Дата операции'].unique()
+            if "Дата операции" in df.columns:
+                unique_dates = df["Дата операции"].unique()
                 logger.info(f"Уникальные даты в исходных данных: {unique_dates[:10]}")  # первые 10
 
                 # Проверяем диапазон дат в данных
-                if hasattr(df['Дата операции'], 'min') and hasattr(df['Дата операции'], 'max'):
+                if hasattr(df["Дата операции"], "min") and hasattr(df["Дата операции"], "max"):
                     logger.info(f"Диапазон дат в данных: {df['Дата операции'].min()} - {df['Дата операции'].max()}")
 
             return json.dumps({"error": "Нет данных за указанный период"}, ensure_ascii=False)
@@ -53,8 +45,8 @@ def main_function(input_time: str, file_path: str = '..\\files\\operations.xlsx'
             "greeting": greeting(),
             "cards": process_cards_data(filtered_df),
             "top_transactions": get_top_transactions(filtered_df),
-            "currency_rates": get_currency_rates('../files/user_settings.json'),
-            "stock_prices": get_stock_prices('../files/user_settings.json')
+            "currency_rates": get_currency_rates("../files/user_settings.json"),
+            "stock_prices": get_stock_prices("../files/user_settings.json"),
         }
 
         return json.dumps(result, ensure_ascii=False, indent=2)

@@ -229,13 +229,13 @@ def filter_data_by_month_range(df: pd.DataFrame, input_date: str) -> pd.DataFram
         start_of_month = input_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         # Преобразуем даты в DataFrame (правильный формат "DD.MM.YYYY HH:MM:SS")
-        df['Дата операции'] = pd.to_datetime(df['Дата операции'], format='%d.%m.%Y %H:%M:%S', errors='coerce')
+        df["Дата операции"] = pd.to_datetime(df["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce")
 
         # Удаляем строки с некорректными датами
-        df = df.dropna(subset=['Дата операции'])
+        df = df.dropna(subset=["Дата операции"])
 
         # Фильтруем данные
-        mask = (df['Дата операции'] >= start_of_month) & (df['Дата операции'] <= input_dt)
+        mask = (df["Дата операции"] >= start_of_month) & (df["Дата операции"] <= input_dt)
         filtered_df = df[mask].copy()
 
         logger.info(f"Данные отфильтрованы с {start_of_month.strftime('%d.%m.%Y')} по {input_dt.strftime('%d.%m.%Y')}")
