@@ -1,68 +1,77 @@
-from unittest.mock import patch, mock_open
 import json
-import pandas as pd
+from unittest.mock import MagicMock, mock_open, patch
 
-from src.utils import greeting, load_operations_data, process_cards_data, get_top_transactions, get_currency_rates
+import pandas as pd
 import pytest
 
-from tests.conftest import TEST_USER_SETTINGS, TEST_API_RESPONSE
+from src.utils import (get_currency_rates, get_stock_prices, get_top_transactions, greeting, load_operations_data,
+                       process_cards_data)
+from tests.conftest import TEST_EXCHANGERATE_RESPONSE, TEST_MARKETSTACK_RESPONSE, TEST_USER_SETTINGS
 
 
-@patch('src.utils.datetime')
+@patch("src.utils.datetime")
 def test_greeting_morning(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 7
 
     assert greeting() == "Доброе утро"
 
-@patch('src.utils.datetime')
+
+@patch("src.utils.datetime")
 def test_greeting_day(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 14
 
     assert greeting() == "Добрый день"
 
-@patch('src.utils.datetime')
+
+@patch("src.utils.datetime")
 def test_greeting_evening(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 21
 
     assert greeting() == "Добрый вечер"
 
-@patch('src.utils.datetime')
+
+@patch("src.utils.datetime")
 def test_greeting_night(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 4
 
     assert greeting() == "Доброй ночи"
 
+
 def test_load_operations_data_int():
     with pytest.raises(TypeError):
         load_operations_data(5)
 
+
 def test_load_operations_data_no_file():
     with pytest.raises(FileNotFoundError):
-        load_operations_data('no_file_at_all.xlsx')
+        load_operations_data("no_file_at_all.xlsx")
 
-@patch('pandas.read_excel')
-@patch('os.path.abspath')
+
+@patch("pandas.read_excel")
+@patch("os.path.abspath")
 def test_load_operations_data(mock_abspath, mock_read_excel):
-    mock_abspath.return_value = '\\fake\\path\\file.xlsx'
-    mock_df = pd.DataFrame({'col1': [1, 2], 'col2': [3, 4]})
+    mock_abspath.return_value = "\\fake\\path\\file.xlsx"
+    mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
     mock_read_excel.return_value = mock_df
 
-    result = load_operations_data('test.xlsx')
+    result = load_operations_data("test.xlsx")
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 2
-    mock_read_excel.assert_called_once_with('\\fake\\path\\file.xlsx', sheet_name='Отчет по операциям')
+    mock_read_excel.assert_called_once_with("\\fake\\path\\file.xlsx", sheet_name="Отчет по операциям")
+
 
 def test_process_cards_data_empty():
     df = pd.DataFrame({})
     with pytest.raises(ValueError):
         process_cards_data(df)
 
+
 def test_process_cards_data_missing_key():
-    df_no_sum = pd.DataFrame({'Номер карты': ['1234']})
+    df_no_sum = pd.DataFrame({"Номер карты": ["1234"]})
     with pytest.raises(KeyError, match="Отсутствуют колонки: Сумма операции"):
         process_cards_data(df_no_sum)
 
@@ -74,64 +83,70 @@ def test_process_cards_data_missing_key():
     with pytest.raises(KeyError, match="Отсутствуют колонки: Номер карты, Сумма операции"):
         process_cards_data(df_no_sum_card)
 
+
 def test_process_cards_data_exception():
-    df = pd.DataFrame({
-        'Номер карты': ['1234567812345678'],
-        'Сумма операции': [-100]
-    })
-    with patch('src.utils.logger') as mock_logger:
-        with patch('pandas.DataFrame.groupby') as mock_groupby:
+    df = pd.DataFrame({"Номер карты": ["1234567812345678"], "Сумма операции": [-100]})
+    with patch("src.utils.logger") as mock_logger:
+        with patch("pandas.DataFrame.groupby") as mock_groupby:
             mock_groupby.side_effect = Exception("Критическая ошибка в process_cards_data")
 
             with pytest.raises(Exception, match="Критическая ошибка в process_cards_data"):
                 process_cards_data(df)
 
-            mock_logger.error.assert_called_once_with('Критическая ошибка в process_cards_data: Критическая ошибка в process_cards_data')
+            mock_logger.error.assert_called_once_with(
+                "Критическая ошибка в process_cards_data: Критическая ошибка в process_cards_data"
+            )
+
 
 def test_process_cards_data():
-    df = pd.DataFrame({
-        'Номер карты': ['1234567812345678', '8765432187654321', '1234567812345678'],
-        'Сумма операции': [-100.50, -200.75, -50.25]
-    })
+    df = pd.DataFrame(
+        {
+            "Номер карты": ["1234567812345678", "8765432187654321", "1234567812345678"],
+            "Сумма операции": [-100.50, -200.75, -50.25],
+        }
+    )
 
     result = process_cards_data(df)
 
     assert result is not None
     assert len(result) == 2
 
-    assert result[0]['last_digits'] == '4321'
-    assert result[0]['total_spent'] == 200.75
-    assert result[0]['cashback'] == 2.01
+    assert result[0]["last_digits"] == "4321"
+    assert result[0]["total_spent"] == 200.75
+    assert result[0]["cashback"] == 2.01
 
-    assert result[1]['last_digits'] == '5678'
-    assert result[1]['total_spent'] == 150.75
-    assert result[1]['cashback'] == 1.51
+    assert result[1]["last_digits"] == "5678"
+    assert result[1]["total_spent"] == 150.75
+    assert result[1]["cashback"] == 1.51
+
 
 def test_get_top_transactions_none_empty():
-    with pytest.raises(ValueError,  match="DataFrame не может быть None"):
+    with pytest.raises(ValueError, match="DataFrame не может быть None"):
         get_top_transactions(None)
 
     df_empty = pd.DataFrame()
     assert get_top_transactions(df_empty) == []
 
 
-@pytest.mark.parametrize("columns_to_include, expected_error", [
-    (['Сумма платежа', 'Категория', 'Описание'], "Дата операции"),
-    (['Дата операции', 'Категория', 'Описание'], "Сумма платежа"),
-    (['Дата операции', 'Сумма платежа', 'Описание'], "Категория"),
-    (['Дата операции', 'Сумма платежа', 'Категория'], "Описание"),
-    (['Дата операции', 'Сумма платежа'], "Категория, Описание"),
-    (['Дата операции'], "Сумма платежа, Категория, Описание"),
-
-])
+@pytest.mark.parametrize(
+    "columns_to_include, expected_error",
+    [
+        (["Сумма платежа", "Категория", "Описание"], "Дата операции"),
+        (["Дата операции", "Категория", "Описание"], "Сумма платежа"),
+        (["Дата операции", "Сумма платежа", "Описание"], "Категория"),
+        (["Дата операции", "Сумма платежа", "Категория"], "Описание"),
+        (["Дата операции", "Сумма платежа"], "Категория, Описание"),
+        (["Дата операции"], "Сумма платежа, Категория, Описание"),
+    ],
+)
 def test_get_top_transactions_missing_columns(columns_to_include, expected_error):
 
-
-    data = {col: ['test_value'] for col in columns_to_include}
+    data = {col: ["test_value"] for col in columns_to_include}
     df = pd.DataFrame(data)
 
     with pytest.raises(KeyError, match=f"Отсутствуют обязательные колонки: {expected_error}"):
         get_top_transactions(df)
+
 
 def test_get_top_transactions_invalid_top_n(valid_transactions_df):
     result = get_top_transactions(valid_transactions_df, top_n=-1)
@@ -143,97 +158,169 @@ def test_get_top_transactions_invalid_top_n(valid_transactions_df):
     result = get_top_transactions(valid_transactions_df, top_n=100)
     assert len(result) == 3
 
+
 def test_get_top_transactions(valid_transactions_df):
     result = get_top_transactions(valid_transactions_df, top_n=2)
     assert len(result) == 2
-    assert result == [{
-                "date": '30.12.2021',
-                "amount": 200.00,
-                "category": 'Транспорт',
-                "description": "Такси"},
+    assert result == [
+        {"date": "30.12.2021", "amount": 200.00, "category": "Транспорт", "description": "Такси"},
+        {"date": "31.12.2021", "amount": 100.00, "category": "Еда", "description": "Не указана"},
+    ]
 
-                {"date": "31.12.2021",
-                "amount": 100.00,
-                "category": "Еда",
-                "description": "Не указана"
 
-            }]
-
-@patch('src.utils.requests.get')
-@patch('src.utils.os.getenv')
-@patch('src.utils.os.path.abspath')
-@patch('builtins.open', new_callable=mock_open, read_data=json.dumps({
-    "user_currencies": ["USD", "EUR"]
-}))
+@patch("src.utils.requests.get")
+@patch("src.utils.os.getenv")
+@patch("src.utils.os.path.abspath")
+@patch("builtins.open", new_callable=mock_open, read_data=json.dumps({"user_currencies": ["USD", "EUR"]}))
 def test_get_currency_rates(mock_file, mock_abspath, mock_getenv, mock_requests_get):
-    mock_getenv.return_value = 'test_api_key'
-    mock_abspath.return_value = 'user_settings.json'
+    mock_getenv.return_value = "test_api_key"
+    mock_abspath.return_value = "user_settings.json"
     mock_response = mock_requests_get.return_value
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "result": 75.45
-    }
+    mock_response.json.return_value = {"result": 75.45}
 
-
-    with patch('src.utils.load_dotenv'):
-        result = get_currency_rates('user_settings.json')
-
+    with patch("src.utils.load_dotenv"):
+        result = get_currency_rates("user_settings.json")
 
     assert result is not None
     assert len(result) == 2
 
-    currencies = [item['currency'] for item in result]
-    assert 'USD' in currencies
-    assert 'EUR' in currencies
+    currencies = [item["currency"] for item in result]
+    assert "USD" in currencies
+    assert "EUR" in currencies
 
-    usd_rate = next(item for item in result if item['currency'] == 'USD')
-    eur_rate = next(item for item in result if item['currency'] == 'EUR')
-    assert usd_rate['rate'] == 75.45
-    assert eur_rate['rate'] == 75.45
+    usd_rate = next(item for item in result if item["currency"] == "USD")
+    eur_rate = next(item for item in result if item["currency"] == "EUR")
+    assert usd_rate["rate"] == 75.45
+    assert eur_rate["rate"] == 75.45
+
 
 def test_get_currency_rates_no_file():
-    with patch('src.utils.load_dotenv'):
-        with patch('src.utils.os.getenv', return_value='test_api_key'):
-            with patch('src.utils.os.path.abspath', return_value='no_file.json'):
+    with patch("src.utils.load_dotenv"):
+        with patch("src.utils.os.getenv", return_value="test_api_key"):
+            with patch("src.utils.os.path.abspath", return_value="no_file.json"):
                 with pytest.raises(FileNotFoundError):
-                    get_currency_rates('no_file.json')
+                    get_currency_rates("no_file.json")
 
 
-@patch('src.utils.os.getenv')
-@patch('src.utils.load_dotenv')
-@patch('src.utils.os.path.abspath')
-@patch('builtins.open', new_callable=mock_open, read_data=json.dumps({
-    "user_currencies": ["USD", "EUR"]
-}))
+@patch("src.utils.os.getenv")
+@patch("src.utils.load_dotenv")
+@patch("src.utils.os.path.abspath")
+@patch("builtins.open", new_callable=mock_open, read_data=json.dumps({"user_currencies": ["USD", "EUR"]}))
 def test_get_currency_rates_no_api_key(mock_file, mock_abspath, mock_load_dotenv, mock_getenv):
     mock_getenv.return_value = None
-    mock_abspath.return_value = 'user_settings.json'
+    mock_abspath.return_value = "user_settings.json"
 
     with pytest.raises(ValueError, match="API ключ не найден"):
-        get_currency_rates('user_settings.json')
+        get_currency_rates("user_settings.json")
 
     mock_load_dotenv.assert_called_once()
-    mock_getenv.assert_called_with('API_KEY_CURR')
+    mock_getenv.assert_called_with("API_KEY_CURR")
 
 
-@patch('builtins.open', new_callable=mock_open, read_data=json.dumps({
-    "user_currencies": []
-}))
-@patch('src.utils.os.path.abspath')
-@patch('src.utils.load_dotenv')
-@patch('src.utils.os.getenv')
-@patch('src.utils.requests.get')
+@patch("builtins.open", new_callable=mock_open, read_data=json.dumps({"user_currencies": []}))
+@patch("src.utils.os.path.abspath")
+@patch("src.utils.load_dotenv")
+@patch("src.utils.os.getenv")
+@patch("src.utils.requests.get")
 def test_get_currency_rates_no_currencies(mock_requests_get, mock_getenv, mock_load_dotenv, mock_abspath, mock_file):
 
-    mock_getenv.return_value = 'test_api_key'
-    mock_abspath.return_value = 'user_settings.json'
+    mock_getenv.return_value = "test_api_key"
+    mock_abspath.return_value = "user_settings.json"
 
-    result = get_currency_rates('user_settings.json')
-
+    result = get_currency_rates("user_settings.json")
 
     assert result == []
     assert len(result) == 0
 
-
     mock_requests_get.assert_not_called()
 
+
+@patch("src.utils.requests.get")
+@patch("src.utils.os.getenv")
+@patch("src.utils.load_dotenv")
+@patch("builtins.open", new_callable=mock_open, read_data=json.dumps(TEST_USER_SETTINGS))
+def test_get_stock_prices(mock_file, mock_load_dotenv, mock_getenv, mock_requests_get):
+    mock_getenv.side_effect = lambda key: "test_api_key" if key in ["API_KEY_STOCKS", "API_KEY_CURR"] else None
+
+    mock_response_stocks = MagicMock()
+    mock_response_stocks.status_code = 200
+    mock_response_stocks.json.return_value = TEST_MARKETSTACK_RESPONSE
+
+    mock_response_curr = MagicMock()
+    mock_response_curr.status_code = 200
+    mock_response_curr.json.return_value = TEST_EXCHANGERATE_RESPONSE
+
+    mock_requests_get.side_effect = lambda *args, **kwargs: (
+        mock_response_stocks
+        if "marketstack" in args[0]
+        else mock_response_curr if "exchangerates" in args[0] else None
+    )
+
+    result = get_stock_prices("..\\files\\user_settings.json")
+
+    assert result is not None
+
+
+@patch("builtins.open", new_callable=mock_open, read_data=json.dumps({"user_stocks": ["AAPL", "GOOGL"]}))
+@patch("src.utils.os.path.abspath")
+@patch("src.utils.load_dotenv")
+@patch("src.utils.os.getenv")
+def test_get_stock_prices_no_api_key(mock_getenv, mock_load_dotenv, mock_abspath, mock_file):
+    mock_getenv.return_value = None
+    mock_abspath.return_value = "user_settings.json"
+
+    with pytest.raises(Exception, match="Ошибка получения цен акций: API ключ не найден"):
+        get_stock_prices("user_settings.json")
+
+    mock_load_dotenv.assert_called_once()
+
+    assert mock_getenv.call_count >= 2
+    mock_getenv.assert_any_call("API_KEY_STOCKS")
+    mock_getenv.assert_any_call("API_KEY_CURR")
+
+
+@patch("src.utils.os.getenv")
+@patch("src.utils.load_dotenv")
+@patch("src.utils.os.path.abspath")
+@patch("builtins.open", new_callable=mock_open, read_data=json.dumps({"user_stocks": []}))
+@patch("src.utils.logger.info")
+def test_get_stock_prices_no_stocks_in_settings(
+    mock_logger_info, mock_file, mock_abspath, mock_load_dotenv, mock_getenv
+):
+
+    mock_getenv.side_effect = lambda key: "test_api_key" if key in ["API_KEY_STOCKS", "API_KEY_CURR"] else None
+    mock_abspath.return_value = "user_settings.json"
+
+    result = get_stock_prices("user_settings.json")
+
+    assert result == []
+    mock_logger_info.assert_called_once_with("Нет выбранных акций в настройках")
+    mock_load_dotenv.assert_called_once()
+    mock_getenv.assert_any_call("API_KEY_STOCKS")
+    mock_getenv.assert_any_call("API_KEY_CURR")
+
+
+@patch("src.utils.requests.get")
+@patch("src.utils.os.getenv")
+@patch("src.utils.load_dotenv")
+@patch("src.utils.os.path.abspath")
+@patch("builtins.open", new_callable=mock_open, read_data=json.dumps({"user_stocks": ["AAPL"]}))
+@patch("src.utils.logger.error")
+def test_get_stock_prices_json_exception(
+    mock_logger_error, mock_file, mock_abspath, mock_load_dotenv, mock_getenv, mock_requests_get
+):
+
+    mock_getenv.side_effect = lambda key: "test_api_key" if key in ["API_KEY_STOCKS", "API_KEY_CURR"] else None
+    mock_abspath.return_value = "user_settings.json"
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.side_effect = ValueError("Invalid JSON")
+
+    mock_requests_get.return_value = mock_response
+
+    with pytest.raises(Exception, match="Ошибка получения цен акций: Invalid JSON"):
+        get_stock_prices("user_settings.json")
+
+    mock_logger_error.assert_called_once_with("Ошибка получения цен акций: Invalid JSON")
