@@ -1,32 +1,35 @@
-from unittest.mock import patch
-
+from unittest.mock import patch, mock_open
+import json
 import pandas as pd
 
-from src.views import greeting, load_operations_data, process_cards_data, get_top_transactions
+from src.utils import greeting, load_operations_data, process_cards_data, get_top_transactions, get_currency_rates
 import pytest
 
-@patch('src.views.datetime')
+from tests.conftest import TEST_USER_SETTINGS, TEST_API_RESPONSE
+
+
+@patch('src.utils.datetime')
 def test_greeting_morning(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 7
 
     assert greeting() == "Доброе утро"
 
-@patch('src.views.datetime')
+@patch('src.utils.datetime')
 def test_greeting_day(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 14
 
     assert greeting() == "Добрый день"
 
-@patch('src.views.datetime')
+@patch('src.utils.datetime')
 def test_greeting_evening(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 21
 
     assert greeting() == "Добрый вечер"
 
-@patch('src.views.datetime')
+@patch('src.utils.datetime')
 def test_greeting_night(mock_datetime):
     mock_now = mock_datetime.now.return_value
     mock_now.hour = 4
@@ -76,7 +79,7 @@ def test_process_cards_data_exception():
         'Номер карты': ['1234567812345678'],
         'Сумма операции': [-100]
     })
-    with patch('src.views.logger') as mock_logger:
+    with patch('src.utils.logger') as mock_logger:
         with patch('pandas.DataFrame.groupby') as mock_groupby:
             mock_groupby.side_effect = Exception("Критическая ошибка в process_cards_data")
 
@@ -155,3 +158,82 @@ def test_get_top_transactions(valid_transactions_df):
                 "description": "Не указана"
 
             }]
+
+@patch('src.utils.requests.get')
+@patch('src.utils.os.getenv')
+@patch('src.utils.os.path.abspath')
+@patch('builtins.open', new_callable=mock_open, read_data=json.dumps({
+    "user_currencies": ["USD", "EUR"]
+}))
+def test_get_currency_rates(mock_file, mock_abspath, mock_getenv, mock_requests_get):
+    mock_getenv.return_value = 'test_api_key'
+    mock_abspath.return_value = 'user_settings.json'
+    mock_response = mock_requests_get.return_value
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "result": 75.45
+    }
+
+
+    with patch('src.utils.load_dotenv'):
+        result = get_currency_rates('user_settings.json')
+
+
+    assert result is not None
+    assert len(result) == 2
+
+    currencies = [item['currency'] for item in result]
+    assert 'USD' in currencies
+    assert 'EUR' in currencies
+
+    usd_rate = next(item for item in result if item['currency'] == 'USD')
+    eur_rate = next(item for item in result if item['currency'] == 'EUR')
+    assert usd_rate['rate'] == 75.45
+    assert eur_rate['rate'] == 75.45
+
+def test_get_currency_rates_no_file():
+    with patch('src.utils.load_dotenv'):
+        with patch('src.utils.os.getenv', return_value='test_api_key'):
+            with patch('src.utils.os.path.abspath', return_value='no_file.json'):
+                with pytest.raises(FileNotFoundError):
+                    get_currency_rates('no_file.json')
+
+
+@patch('src.utils.os.getenv')
+@patch('src.utils.load_dotenv')
+@patch('src.utils.os.path.abspath')
+@patch('builtins.open', new_callable=mock_open, read_data=json.dumps({
+    "user_currencies": ["USD", "EUR"]
+}))
+def test_get_currency_rates_no_api_key(mock_file, mock_abspath, mock_load_dotenv, mock_getenv):
+    mock_getenv.return_value = None
+    mock_abspath.return_value = 'user_settings.json'
+
+    with pytest.raises(ValueError, match="API ключ не найден"):
+        get_currency_rates('user_settings.json')
+
+    mock_load_dotenv.assert_called_once()
+    mock_getenv.assert_called_with('API_KEY_CURR')
+
+
+@patch('builtins.open', new_callable=mock_open, read_data=json.dumps({
+    "user_currencies": []
+}))
+@patch('src.utils.os.path.abspath')
+@patch('src.utils.load_dotenv')
+@patch('src.utils.os.getenv')
+@patch('src.utils.requests.get')
+def test_get_currency_rates_no_currencies(mock_requests_get, mock_getenv, mock_load_dotenv, mock_abspath, mock_file):
+
+    mock_getenv.return_value = 'test_api_key'
+    mock_abspath.return_value = 'user_settings.json'
+
+    result = get_currency_rates('user_settings.json')
+
+
+    assert result == []
+    assert len(result) == 0
+
+
+    mock_requests_get.assert_not_called()
+

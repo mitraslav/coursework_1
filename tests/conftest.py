@@ -9,3 +9,13 @@ def valid_transactions_df():
         'Категория': ['Еда', 'Транспорт', 'Развлечения'],
         'Описание': [None, 'Такси', 'Кино']
     })
+
+TEST_USER_SETTINGS = {
+    "user_currencies": ["USD", "EUR"],
+    "user_stocks": ["AAPL", "GOOGL"]
+}
+
+TEST_API_RESPONSE = {
+    "success": True,
+    "result": 75.45
+}
