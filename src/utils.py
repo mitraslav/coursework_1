@@ -210,3 +210,39 @@ def get_stock_prices(user_set_path: str) -> list[dict] | None:
     except Exception as e:
         logger.error(f"Ошибка получения цен акций: {e}")
         raise Exception(f"Ошибка получения цен акций: {e}")
+
+
+def filter_data_by_month_range(df: pd.DataFrame, input_date: str) -> pd.DataFrame:
+    """
+    Фильтрует данные с начала месяца по указанную дату
+
+    Args:
+        df: DataFrame с операциями
+        input_date: Дата в формате "YYYY-MM-DD HH:MM:SS"
+
+    Returns:
+        Отфильтрованный DataFrame
+    """
+    try:
+        # Преобразуем входную дату
+        input_dt = datetime.strptime(input_date, "%Y-%m-%d %H:%M:%S")
+        start_of_month = input_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        # Преобразуем даты в DataFrame (правильный формат "DD.MM.YYYY HH:MM:SS")
+        df['Дата операции'] = pd.to_datetime(df['Дата операции'], format='%d.%m.%Y %H:%M:%S', errors='coerce')
+
+        # Удаляем строки с некорректными датами
+        df = df.dropna(subset=['Дата операции'])
+
+        # Фильтруем данные
+        mask = (df['Дата операции'] >= start_of_month) & (df['Дата операции'] <= input_dt)
+        filtered_df = df[mask].copy()
+
+        logger.info(f"Данные отфильтрованы с {start_of_month.strftime('%d.%m.%Y')} по {input_dt.strftime('%d.%m.%Y')}")
+        logger.info(f"Найдено {len(filtered_df)} записей из {len(df)}")
+
+        return filtered_df
+
+    except Exception as e:
+        logger.error(f"Ошибка фильтрации данных: {e}")
+        return df

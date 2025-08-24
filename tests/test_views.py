@@ -4,8 +4,9 @@ from unittest.mock import MagicMock, mock_open, patch
 import pandas as pd
 import pytest
 
-from src.utils import (get_currency_rates, get_stock_prices, get_top_transactions, greeting, load_operations_data,
+from src.utils import (get_currency_rates, get_stock_prices, get_top_transactions, greeting, load_operations_data, filter_data_by_month_range,
                        process_cards_data)
+from src.views import main_function
 from tests.conftest import TEST_EXCHANGERATE_RESPONSE, TEST_MARKETSTACK_RESPONSE, TEST_USER_SETTINGS
 
 
@@ -324,3 +325,77 @@ def test_get_stock_prices_json_exception(
         get_stock_prices("user_settings.json")
 
     mock_logger_error.assert_called_once_with("Ошибка получения цен акций: Invalid JSON")
+
+def test_filter_data_by_month_range_empty_dataframe():
+
+    empty_df = pd.DataFrame(columns=['Дата операции', 'Сумма операции'])
+    input_date = "2021-12-31 23:59:59"
+
+
+    result_df = filter_data_by_month_range(empty_df, input_date)
+
+
+    assert result_df.empty, "Для пустого DataFrame должен возвращаться пустой результат"
+    assert len(result_df) == 0
+
+
+def test_filter_data_by_month_range_normal_case(test_data):
+    """Тест нормального случая фильтрации"""
+    df = test_data.copy()
+    input_date = "2024-01-20 12:00:00"
+
+    result = filter_data_by_month_range(df, input_date)
+
+    # Должны остаться только записи за январь 2024 до 20 января
+    expected_dates = ['01.01.2024 10:00:00', '15.01.2024 14:30:00', '15.01.2024 09:15:00']
+
+    assert len(result) == 3
+    result_dates = result['Дата операции'].dt.strftime('%d.%m.%Y %H:%M:%S').values
+    assert all(date in result_dates for date in expected_dates)
+
+
+def test_main_function_successful_flow():
+
+    # Создаем тестовые данные
+    test_data = pd.DataFrame({
+        'Дата операции': ['01.01.2024 10:00:00', '15.01.2024 14:30:00'],
+        'Сумма': [100, 200],
+        'Категория': ['еда', 'транспорт'],
+        'Валюта': ['RUB', 'RUB']
+    })
+
+    with patch('src.views.load_operations_data', return_value=test_data), \
+            patch('src.views.filter_data_by_month_range', return_value=test_data), \
+            patch('src.views.greeting', return_value="Добрый день"), \
+            patch('src.views.process_cards_data', return_value={"cards": []}), \
+            patch('src.views.get_top_transactions', return_value=[]), \
+            patch('src.views.get_currency_rates', return_value={}), \
+            patch('src.views.get_stock_prices', return_value={}), \
+            patch('src.views.logger') as mock_logger:
+        result = main_function("2024-01-20 12:00:00")
+
+        # Проверяем структуру ответа
+        result_data = json.loads(result)
+        assert 'greeting' in result_data
+        assert 'cards' in result_data
+        assert 'top_transactions' in result_data
+        assert 'currency_rates' in result_data
+        assert 'stock_prices' in result_data
+
+        # Проверяем логирование
+        mock_logger.info.assert_called()
+
+
+@patch('src.views.load_operations_data')
+@patch('src.views.logger')
+def test_main_function_empty_dataframe(mock_logger, mock_load_data):
+
+    mock_load_data.return_value = pd.DataFrame()
+
+    result = main_function("2024-01-20 12:00:00")
+    result_data = json.loads(result)
+
+    assert 'error' in result_data
+    assert result_data['error'] == "Не удалось загрузить данные"
+    # При пустом DataFrame logger.info не вызывается, только возвращается ошибка
+    mock_logger.info.assert_not_called()
